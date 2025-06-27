@@ -43,10 +43,9 @@ def main():
     ]
 
     for _ in range(20):
-        response = generate_content(client, messages, verbose)
-        last_msg = messages[-1]
-        if not last_msg.parts[0].function_response:
-            print(response.text)
+        final_response = generate_content(client, messages, verbose)
+        if final_response:
+            print(final_response)
             break
 
 def generate_content(client, messages, verbose):
@@ -57,30 +56,35 @@ def generate_content(client, messages, verbose):
             tools=[available_functions], 
             system_instruction=prompts.system_prompt)
     )
-    for candidate in response.candidates:
-        messages.append(candidate.content)
+    
+    if response.candidates:
+        for candidate in response.candidates:
+            messages.append(candidate.content)
     
     if verbose:
         print("Prompt tokens:", response.usage_metadata.prompt_token_count)
         print("Response tokens:", response.usage_metadata.candidates_token_count)
-    print("Response:")
+    # print("Response:")
 
     function_responses = []
     
-    if response.function_calls:
-        for func_call in response.function_calls:
-            func_call_result = call_function(func_call, verbose=verbose)
-            try:
-                if verbose:
-                    print(f"-> {func_call_result.parts[0].function_response.response}")
-                function_responses.append(func_call_result.parts[0])
-                messages.append(func_call_result)
-            except Exception as e:
-                raise Exception("An unrecoverable error occurred.")
-        if not function_responses:
-            raise Exception("no function responses generated, exiting.")
-            
-    return response
+    if not response.function_calls:
+        return response.text
+    
+    for func_call in response.function_calls:
+        func_call_result = call_function(func_call, verbose)
+        try:
+            if verbose:
+                print(f"-> {func_call_result.parts[0].function_response.response}")
+            function_responses.append(func_call_result.parts[0])
+        except Exception as e:
+            raise Exception("An unrecoverable error occurred.")
+    if not function_responses:
+        raise Exception("no function responses generated, exiting.")
+    
+    # We don't have a final response yet, but we add the messages
+    messages.append(types.Content(role="tool", parts=function_responses))
+    
 
 def call_function(func_call, verbose=False):
     if verbose:
